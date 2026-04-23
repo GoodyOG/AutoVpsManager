@@ -1,21 +1,15 @@
 #!/bin/bash
-
 # --- GoodyOG & TechyChi Premium Menu ---
-# Fixed Loop Logic (No Nesting)
+# [FIXED] Restored RAM display and kept simple exit logic
 
-# [1] Trap Ctrl+C to exit completely
 trap 'clear; exit 0' SIGINT
 
-# Color Settings
 RED='\033[0;31m'
 GREEN='\033[0;32m'
 BLUE='\033[0;34m'
 CYAN='\033[0;36m'
 YELLOW='\033[0;33m'
 NC='\033[0m'
-
-# Start the Loop
-while true; do
 
 # System Info Gathering
 CONFIG="/usr/local/etc/xray/config.json"
@@ -28,8 +22,11 @@ DATE=$(date +"%d-%m-%Y | %H:%M:%S")
 
 cpu_idle=$(top -bn1 | grep "Cpu(s)" | sed 's/,/./g' | grep -Po "[0-9.]+(?=\s*id)" | head -n 1)
 cpu_usage=$(awk "BEGIN {printf \"%.1f%%\", 100 - ${cpu_idle:-0}}")
+
+# RESTORED RAM CALCULATION
 RAM_TOTAL=$(free -m | grep Mem | awk '{print $2}')
 RAM_USED=$(free -m | grep Mem | awk '{print $3}')
+RAM_FREE=$(($RAM_TOTAL - $RAM_USED))
 
 # Reboot Time Logic
 if [ -f /etc/cron.d/auto_reboot ]; then
@@ -74,7 +71,10 @@ echo -e "   Current Time       = $DATE"
 echo -e "   Operating System   = $OS_NAME"
 echo -e "   Current Domain     = $DOMAIN"
 echo -e "   NS Domain          = $NS_DOMAIN"
+# RESTORED RAM DISPLAY
 echo -e "   Total Ram          = $RAM_TOTAL MB"
+echo -e "   Total Used Ram     = $RAM_USED MB"
+echo -e "   Total Free Ram     = $RAM_FREE MB"
 echo -e "   CPU Usage          = $cpu_usage"
 echo -e "   Auto Reboot        = $REBOOT_TIME"
 echo -e "${CYAN}┌─────────────────────────────────────────────────────┐${NC}"
@@ -114,7 +114,5 @@ case $opt in
     7|07) menu-domain.sh ;;
     8|08) running.sh ;;
     0|00) clear; exit 0 ;;
-    *) echo -e "${RED}Invalid Option${NC}"; sleep 1 ;;
+    *) echo -e "${RED}Invalid Option${NC}"; sleep 1; clear; exit 1 ;;
 esac
-
-done
