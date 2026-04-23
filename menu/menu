@@ -1,0 +1,140 @@
+#!/bin/bash
+
+# --- GoodyOG & TechyChi Premium Menu ---
+# Unlocked & Decoded Edition
+
+# [1] Trap Ctrl+C (Graceful exit)
+trap 'clear; echo -e "\n\033[0;31m[!] Menu exited by user.\033[0m\n"; exit 1' SIGINT
+
+# [2] Standard Clear
+clear
+
+# Color Settings
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+BLUE='\033[0;34m'
+CYAN='\033[0;36m'
+YELLOW='\033[0;33m'
+NC='\033[0m'
+
+# System Info Gathering
+CONFIG="/usr/local/etc/xray/config.json"
+MYIP=$(curl -sS -4 ifconfig.me)
+DOMAIN=$(cat /etc/xray/domain 2>/dev/null || echo "Not Set")
+NS_DOMAIN=$(cat /etc/xray/nsdomain 2>/dev/null || echo "Not Set")
+OS_NAME=$(grep -w "PRETTY_NAME" /etc/os-release | cut -d= -f2 | tr -d '"')
+UPTIME=$(uptime -p | cut -d " " -f 2-10)
+DATE=$(date +"%d-%m-%Y | %H:%M:%S")
+
+# --- CPU & RAM Usage Logic ---
+cpu_idle=$(top -bn1 | grep "Cpu(s)" | sed 's/,/./g' | grep -Po "[0-9.]+(?=\s*id)" | head -n 1)
+cpu_usage=$(awk "BEGIN {printf \"%.1f%%\", 100 - ${cpu_idle:-0}}")
+
+RAM_TOTAL=$(free -m | grep Mem | awk '{print $2}')
+RAM_USED=$(free -m | grep Mem | awk '{print $3}')
+RAM_FREE=$(($RAM_TOTAL - $RAM_USED))
+
+# --- REBOOT TIME PARSER ---
+if [ -f /etc/cron.d/auto_reboot ]; then
+    cron_hr=$(grep 'reboot' /etc/cron.d/auto_reboot | awk '{print $2}')
+    if [[ "$cron_hr" == "*" ]]; then
+        REBOOT_TIME="Every 1 Hour"
+    elif [[ "$cron_hr" == "*/6" ]]; then
+        REBOOT_TIME="Every 6 Hours"
+    elif [[ "$cron_hr" == "*/12" ]]; then
+        REBOOT_TIME="Every 12 Hours"
+    elif [[ "$cron_hr" =~ ^[0-9]+$ ]]; then
+        printf -v formatted_time "%02d:00" "$cron_hr"
+        REBOOT_TIME="$formatted_time (Daily)"
+    else
+        REBOOT_TIME="Active (Custom)"
+    fi
+else
+    REBOOT_TIME="Not Set"
+fi
+
+# --- REAL-TIME COUNTERS ---
+SSH_COUNT=$(awk -F: '$3 >= 1000 && $1 != "nobody" && ($7 == "/bin/false" || $7 == "/usr/sbin/nologin") {print $1}' /etc/passwd | wc -l)
+VMESS_COUNT=$(grep -E "// ### " "$CONFIG" | awk '{print $3}' | sort | uniq | wc -l 2>/dev/null || echo "0")
+VLESS_COUNT=$(grep -E "// #vl " "$CONFIG" | awk '{print $3}' | sort | uniq | wc -l 2>/dev/null || echo "0")
+TROJAN_COUNT=$(grep -E "// #tr " "$CONFIG" | awk '{print $3}' | sort | uniq | wc -l 2>/dev/null || echo "0")
+
+# Service Check Function
+status_check() {
+    if systemctl is-active --quiet "$1"; then
+        echo -e "${GREEN}ON${NC}"
+    else
+        echo -e "${RED}OFF${NC}"
+    fi
+}
+
+# --- BANDWIDTH MONITOR ---
+IFACE=$(ip route get 1.1.1.1 | awk '{print $5; exit}')
+CURRENT_MONTH=$(date +%Y-%m)
+RX_TODAY=$(vnstat -i $IFACE | grep "today" | awk '{print $2" "$3}' || echo "0 B")
+RX_YEST=$(vnstat -i $IFACE | grep "yesterday" | awk '{print $2" "$3}' || echo "0 B")
+RX_MONTH=$(vnstat -i $IFACE -m | grep "$CURRENT_MONTH" | awk '{print $8" "$9}' || echo "0 B")
+
+# --- UNLOCKED LICENSE UI ---
+CLIENT="GoodyOG Premium User"
+EXP="LIFETIME"
+DAYS_LEFT="Unlimited"
+
+clear
+echo -e "${CYAN}┌─────────────────────────────────────────────────────┐${NC}"
+echo -e "${YELLOW}                 LICENSE INFORMATION                  ${NC}"
+echo -e "${CYAN}└─────────────────────────────────────────────────────┘${NC}"
+echo -e "   Client     : ${GREEN}$CLIENT${NC}"
+echo -e "   Expiry Date: ${GREEN}$EXP${NC}"
+echo -e "   Days Left  : ${GREEN}$DAYS_LEFT${NC}"
+echo -e "${CYAN}┌─────────────────────────────────────────────────────┐${NC}"
+echo -e "${YELLOW}                   VPS INFORMATION                    ${NC}"
+echo -e "${CYAN}└─────────────────────────────────────────────────────┘${NC}"
+echo -e "   Server Uptime      = $UPTIME"
+echo -e "   Current Time       = $DATE"
+echo -e "   Operating System   = $OS_NAME"
+echo -e "   Current Domain     = $DOMAIN"
+echo -e "   NS Domain          = $NS_DOMAIN"
+echo -e "   Total Ram          = $RAM_TOTAL MB"
+echo -e "   Total Used Ram     = $RAM_USED MB"
+echo -e "   CPU Usage          = $cpu_usage"
+echo -e "   Auto Reboot        = $REBOOT_TIME"
+echo -e "${CYAN}┌─────────────────────────────────────────────────────┐${NC}"
+echo -e "${YELLOW}             GOODYOG & TECHYCHI VPN MANAGER           ${NC}"
+echo -e "${CYAN}└─────────────────────────────────────────────────────┘${NC}"
+echo -e "    IP-VPS            : $MYIP"
+echo -e "    Developer         : GoodyOG (AutoVpsManager)"
+echo -e "${CYAN}├─────────────────────────────────────────────────────┤${NC}"
+echo -e "      SSH        VMESS        VLESS       TROJAN"
+echo -e "       ${GREEN}$SSH_COUNT${NC}           ${GREEN}$VMESS_COUNT${NC}            ${GREEN}$VLESS_COUNT${NC}           ${GREEN}$TROJAN_COUNT${NC}"
+echo -e "${CYAN}├─────────────────────────────────────────────────────┤${NC}"
+echo -e "       SSH : $(status_check ssh)      NGINX : $(status_check nginx)      XRAY : $(status_check xray)"
+echo -e "           DROPBEAR : $(status_check dropbear)       SSH-WS : $(status_check ws-proxy)"
+echo -e "${CYAN}├─────────────────────────────────────────────────────┤${NC}"
+echo -e "    ${GREEN}[01]${NC} SSH     [Menu]      ${GREEN}[06]${NC} BACKUP"
+echo -e "    ${GREEN}[02]${NC} VMESS   [Menu]      ${GREEN}[07]${NC} DOMAIN & SSL"
+echo -e "    ${GREEN}[03]${NC} VLESS   [Menu]      ${GREEN}[08]${NC} CHECK RUNNING"
+echo -e "    ${GREEN}[04]${NC} TROJAN  [Menu]      ${GREEN}[00]${NC} EXIT SYSTEM"
+echo -e "    ${GREEN}[05]${NC} SETTING [Menu]"
+echo -e "${CYAN}└─────────────────────────────────────────────────────┘${NC}"
+echo -e "${CYAN}┌─────────────────────────────────────────────────────┐${NC}"
+echo -e "${YELLOW}                 MONITORING BANDWIDTH                 ${NC}"
+echo -e "${CYAN}├─────────────────────────────────────────────────────┤${NC}"
+echo -e "   BANDWIDTH USED TODAY       = ${GREEN}$RX_TODAY${NC}"
+echo -e "   BANDWIDTH USED YESTERDAY   = ${GREEN}$RX_YEST${NC}"
+echo -e "   TOTAL BANDWIDTH THIS MONTH = ${GREEN}$RX_MONTH${NC}"
+echo -e "${CYAN}└─────────────────────────────────────────────────────┘${NC}"
+echo -e ""
+read -p " Select menu : " opt || exit 1
+case $opt in
+    1|01) menu-ssh.sh ;;
+    2|02) menu-vmess.sh ;;
+    3|03) menu-vless.sh ;;
+    4|04) menu-trojan.sh ;;
+    5|05) menu-set.sh ;;
+    6|06) backup.sh ;;
+    7|07) menu-domain.sh ;;
+    8|08) running.sh ;;
+    0|00) clear; exit 0 ;;
+    *) echo "Invalid Option"; sleep 1; menu ;;
+esac
