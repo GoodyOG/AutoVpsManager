@@ -239,3 +239,21 @@ print_title "INSTALLATION COMPLETE"
 echo -e "${GREEN} GoodyOG AutoVpsManager successfully installed.${NC}"
 echo -e "${YELLOW} Type 'menu' in the terminal to begin.${NC}"
 exit 0
+
+# --- SERVICE HEALER (Force Start) ---
+print_info "Healing Services and forcing start..."
+systemctl daemon-reload
+systemctl enable xray nginx ws-proxy ws-8880 client-slow
+systemctl restart xray
+sleep 3
+systemctl restart nginx
+systemctl restart ws-proxy
+systemctl restart ws-8880
+systemctl restart dropbear
+systemctl restart stunnel4
+systemctl restart udpgw
+
+if ! systemctl is-active --quiet xray; then
+    print_info "Xray failed to auto-start, forcing bind..."
+    systemctl start xray
+fi
