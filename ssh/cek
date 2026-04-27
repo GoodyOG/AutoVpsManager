@@ -1,6 +1,5 @@
 #!/bin/bash
-/usr/bin/auth.sh || exit 1
-if [[ "$(cat /tmp/.vps_auth_token 2>/dev/null)" != "TechSavage_$(date +%Y-%m-%d)" ]]; then exit 1; fi
+
 
 clear
 RED='\033[0;31m'
