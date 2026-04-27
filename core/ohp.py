@@ -1,4 +1,4 @@
-# TheTechSavage OHP (Open HTTP Proxy)
+# Techychi OHP (Open HTTP Proxy)
 import socket, threading, select
 
 # Listen on 2095 (OHP) -> Forward to 1194 (OpenVPN) or 22 (SSH)
