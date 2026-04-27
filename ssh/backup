@@ -1,8 +1,7 @@
 #!/bin/bash
-/usr/bin/auth.sh || exit 1
-if [[ "$(cat /tmp/.vps_auth_token 2>/dev/null)" != "TechSavage_$(date +%Y-%m-%d)" ]]; then exit 1; fi
 
-# --- TheTechSavage Portable Backup Manager (Event-Driven Edition) ---
+
+# --- Techychi Portable Backup Manager (Event-Driven Edition) ---
 
 TG_CONF="/etc/xray/tg_backup.conf"
 BACKUP_DIR="/root/backup_temp" 
