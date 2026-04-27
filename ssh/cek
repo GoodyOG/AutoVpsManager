@@ -1,66 +1,105 @@
 #!/bin/bash
-# Rebranded for TechyChi - Fixed by goodyog
 /usr/bin/auth.sh || exit 1
 if [[ "$(cat /tmp/.vps_auth_token 2>/dev/null)" != "TechSavage_$(date +%Y-%m-%d)" ]]; then exit 1; fi
 
 clear
-# --- COLORS & FORMATTING ---
 RED='\033[0;31m'
 NC='\033[0m'
 GREEN='\033[0;32m'
 ORANGE='\033[0;33m'
 BLUE='\033[0;34m'
-CYAN='\033[0;36m'
 
 echo -e "${BLUE}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
 echo -e "${ORANGE}          CHECK ACTIVE USER LOGIN          ${NC}"
 echo -e "${BLUE}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
 echo -e " ${GREEN}Scanning for active SSH & Dropbear connections...${NC}"
 echo -e "${BLUE}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
-printf " %-17s %-9s %-15s\n" "USERNAME" "PID" "IP ADDRESS"
+printf " %-17s %-9s %-15s %-8s\n" "USERNAME" "PID" "IP ADDRESS" "PORT"
 echo -e "${BLUE}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
 
-# 1. SCAN SSH CONNECTIONS (Using who)
-# Format: user, tty, ip
-ssh_users=$(who | grep -v "root" | awk '{print $1" "$6}' | sed 's/(//g;s/)//g')
+TMP_DB="/tmp/login_db.$$"
+TMP_AUTH="/tmp/login_auth.$$"
+: > "$TMP_DB"
+: > "$TMP_AUTH"
 
-# 2. SCAN DROPBEAR CONNECTIONS
-# Dropbear often doesn't show in 'who', so we check the process list directly
-dropbear_users=$(ps aux | grep -i dropbear | grep -v "grep" | grep -v "root" | awk '{print $1" "$2}')
+# Build PID -> USER map from auth logs (sshd + dropbear), if available
+for LOG in /var/log/auth.log /var/log/auth.log.1; do
+  [[ -r "$LOG" ]] || continue
 
-# 3. CONSOLIDATE RESULTS
-rm -f /tmp/login_db.txt
-touch /tmp/login_db.txt
+  # sshd accepted logins: sshd[1234]: Accepted ... for username from 1.2.3.4 ...
+  awk '
+    /sshd\[[0-9]+\]: Accepted/ {
+      if (match($0, /sshd\[([0-9]+)\]/, a) && match($0, / for ([^ ]+) from /, b)) {
+        print a[1] "|" b[1]
+      }
+    }
+  ' "$LOG" >> "$TMP_AUTH"
 
-# Process SSH
-if [[ -n "$ssh_users" ]]; then
-    while read -r user ip; do
-        pid=$(pgrep -u "$user" sshd | head -n 1)
-        [[ -z "$pid" ]] && pid="-"
-        echo "$user $pid $ip" >> /tmp/login_db.txt
-    done <<< "$ssh_users"
+  # dropbear accepted logins: dropbear[1234]: Password auth succeeded for '\''user'\''
+  awk '
+    /dropbear\[[0-9]+\]: Password auth succeeded for/ {
+      if (match($0, /dropbear\[([0-9]+)\]/, a) && match($0, /for '\''([^'\'']+)'\''/, b)) {
+        print a[1] "|" b[1]
+      }
+    }
+  ' "$LOG" >> "$TMP_AUTH"
+done
+
+# Keep latest mapping per PID
+if [[ -s "$TMP_AUTH" ]]; then
+  tac "$TMP_AUTH" | awk -F'|' '!seen[$1]++ {print $0}' > "${TMP_AUTH}.latest"
+  mv "${TMP_AUTH}.latest" "$TMP_AUTH"
 fi
 
-# Process Dropbear
-if [[ -n "$dropbear_users" ]]; then
-    while read -r user pid; do
-        # Find IP for this Dropbear PID
-        ip=$(netstat -tnpa 2>/dev/null | grep "$pid/dropbear" | awk '{print $5}' | cut -d: -f1 | head -n 1)
-        [[ -z "$ip" ]] && ip="Unknown/Tunnel"
-        echo "$user $pid $ip" >> /tmp/login_db.txt
-    done <<< "$dropbear_users"
-fi
+# Collect active ESTABLISHED TCP sessions on SSH/Dropbear ports
+ss -tnp 2>/dev/null | awk '
+  NR>1 && $1=="ESTAB" {
+    local=$4; peer=$5; proc=$6
+    if (local ~ /:22$/ || local ~ /:109$/ || local ~ /:143$/) {
+      pid="-"
+      if (match(proc, /pid=([0-9]+)/, m)) pid=m[1]
+      split(local, lp, ":"); port=lp[length(lp)]
+      split(peer, pp, ":"); ip=pp[1]
+      gsub(/^\[/,"",ip); gsub(/\]$/,"",ip)
+      print pid "|" ip "|" port
+    }
+  }
+' | while IFS='|' read -r pid ip port; do
+  user="Unknown"
 
-# 4. DISPLAY RESULTS
-if [ -s /tmp/login_db.txt ]; then
-    # Sort and remove duplicates in case a user is counted twice
-    sort -u /tmp/login_db.txt | awk '{printf " %-17s %-9s %-15s\n", $1, $2, $3}'
+  if [[ "$pid" =~ ^[0-9]+$ ]]; then
+    # 1) From auth mapping (best)
+    if [[ -s "$TMP_AUTH" ]]; then
+      mapped="$(awk -F'|' -v p="$pid" '$1==p {print $2; exit}' "$TMP_AUTH")"
+      [[ -n "$mapped" ]] && user="$mapped"
+    fi
+
+    # 2) From sshd process title (e.g. "sshd: username ...")
+    if [[ "$user" == "Unknown" ]]; then
+      args="$(ps -o args= -p "$pid" 2>/dev/null)"
+      if [[ "$args" =~ sshd:\ ([^[:space:]]+) ]]; then
+        u="${BASH_REMATCH[1]}"
+        [[ "$u" != "root" && "$u" != *"[priv]"* ]] && user="$u"
+      fi
+    fi
+
+    # 3) Fallback process owner
+    if [[ "$user" == "Unknown" ]]; then
+      puser="$(ps -o user= -p "$pid" 2>/dev/null | awk '{print $1}')"
+      [[ -n "$puser" ]] && user="$puser"
+    fi
+  fi
+
+  echo "$user|$pid|$ip|$port" >> "$TMP_DB"
+done
+
+if [[ -s "$TMP_DB" ]]; then
+  sort -u "$TMP_DB" | awk -F'|' '{printf " %-17s %-9s %-15s %-8s\n", $1, $2, $3, $4}'
 else
-    echo -e " ${RED}No active users found.${NC}"
+  echo -e " ${RED}No active users found.${NC}"
 fi
 
-# Cleanup
-rm -f /tmp/login_db.txt
+rm -f "$TMP_DB" "$TMP_AUTH"
 
 echo -e "${BLUE}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
 read -n 1 -s -r -p "Press any key to back on menu" || exit 1
