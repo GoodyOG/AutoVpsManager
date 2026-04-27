@@ -559,50 +559,81 @@ print_success "SOCKS5 Configured!"
 # -----------------------------------------------------
 # 8.5 FIREWALL & ANTI-BOT PROTECTION
 # -----------------------------------------------------
-print_info "Configuring UFW Firewall & Anti-Bot Limits..."
-apt-get install -y ufw > /dev/null 2>&1
-ufw allow 22/tcp > /dev/null 2>&1
-ufw allow 109/tcp > /dev/null 2>&1
-ufw allow 143/tcp > /dev/null 2>&1
-ufw allow 80/tcp > /dev/null 2>&1
-ufw allow 81/tcp > /dev/null 2>&1
-ufw allow 8880/tcp > /dev/null 2>&1
-ufw allow 443/tcp > /dev/null 2>&1
-ufw allow 447/tcp > /dev/null 2>&1
-ufw allow 777/tcp > /dev/null 2>&1
-ufw allow 85/tcp > /dev/null 2>&1
-ufw allow 1194/tcp > /dev/null 2>&1
+print_info "Configuring firewall and anti-abuse limits..."
+
+export DEBIAN_FRONTEND=noninteractive
+
+# Pre-answer iptables-persistent questions so install does not hang
+echo iptables-persistent iptables-persistent/autosave_v4 boolean true | debconf-set-selections
+echo iptables-persistent iptables-persistent/autosave_v6 boolean true | debconf-set-selections
+
+# Install packages once, quietly, without prompts
+apt-get update -y > /dev/null 2>&1
+apt-get install -y ufw iptables-persistent netfilter-persistent > /dev/null 2>&1
+
+# Reset UFW only if you want a clean firewall state
+ufw --force reset > /dev/null 2>&1
+
+# Default policies
+ufw default deny incoming > /dev/null 2>&1
+ufw default allow outgoing > /dev/null 2>&1
+ufw default allow routed > /dev/null 2>&1
+
+# Allow TCP ports
+for port in 22 109 143 80 81 8880 443 447 777 85 1194 2095; do
+    ufw allow "${port}/tcp" > /dev/null 2>&1
+done
+
+# Limit SOCKS/SSH-type port
+ufw limit 1080/tcp > /dev/null 2>&1
+
+# Allow UDP ports
 ufw allow 2200/udp > /dev/null 2>&1
 ufw allow 7100:7300/udp > /dev/null 2>&1
 ufw allow 53/udp > /dev/null 2>&1
 ufw allow 5300/udp > /dev/null 2>&1
-ufw allow 2095/tcp > /dev/null 2>&1
-ufw limit 1080/tcp > /dev/null 2>&1
-ufw --force enable > /dev/null 2>&1
-print_success "Military-Grade Firewall Armed!"
 
-# 1. Block SPAM (SMTP Port 25)
-iptables -A OUTPUT -p tcp --dport 25 -j DROP
+# Block SMTP spam
 ufw deny out 25/tcp > /dev/null 2>&1
 
-# 2. Block Torrenting (String Matching for P2P protocols)
-iptables -A FORWARD -m string --string "get_peers" --algo bm -j DROP
-iptables -A FORWARD -m string --string "announce_peer" --algo bm -j DROP
-iptables -A FORWARD -m string --string "find_node" --algo bm -j DROP
-iptables -A FORWARD -m string --algo bm --string "BitTorrent" -j DROP
-iptables -A FORWARD -m string --algo bm --string "BitTorrent protocol" -j DROP
-iptables -A FORWARD -m string --algo bm --string "peer_id=" -j DROP
-iptables -A FORWARD -m string --algo bm --string ".torrent" -j DROP
+# Enable UFW after all UFW rules are added
+ufw --force enable > /dev/null 2>&1
+
+# Raw iptables anti-abuse rules
+iptables -C OUTPUT -p tcp --dport 25 -j DROP 2>/dev/null || \
+iptables -A OUTPUT -p tcp --dport 25 -j DROP
+
+# Block torrent/P2P strings
+for pattern in \
+    "get_peers" \
+    "announce_peer" \
+    "find_node" \
+    "BitTorrent" \
+    "BitTorrent protocol" \
+    "peer_id=" \
+    ".torrent"
+do
+    iptables -C FORWARD -m string --string "$pattern" --algo bm -j DROP 2>/dev/null || \
+    iptables -A FORWARD -m string --string "$pattern" --algo bm -j DROP
+done
+
+iptables -C FORWARD -p tcp --dport 6881:6889 -j DROP 2>/dev/null || \
 iptables -A FORWARD -p tcp --dport 6881:6889 -j DROP
 
-# 3. Block Hacking/Exploitation Ports (SMB/RPC)
+# Block SMB/RPC abuse ports
+iptables -C OUTPUT -p tcp --dport 135:139 -j DROP 2>/dev/null || \
 iptables -A OUTPUT -p tcp --dport 135:139 -j DROP
+
+iptables -C OUTPUT -p tcp --dport 445 -j DROP 2>/dev/null || \
 iptables -A OUTPUT -p tcp --dport 445 -j DROP
+
+iptables -C OUTPUT -p udp --dport 135:139 -j DROP 2>/dev/null || \
 iptables -A OUTPUT -p udp --dport 135:139 -j DROP
+
+iptables -C OUTPUT -p udp --dport 445 -j DROP 2>/dev/null || \
 iptables -A OUTPUT -p udp --dport 445 -j DROP
 
-# 4. Save the rules so they survive a reboot
-apt-get install -y iptables-persistent > /dev/null 2>&1
+# Save rules
 netfilter-persistent save > /dev/null 2>&1
 
 print_success "Cloud-Safe Protocols (Anti-Spam & Anti-Torrent) Armed!"
