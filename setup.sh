@@ -1,4 +1,6 @@
 #!/bin/bash
+set -euo pipefail
+trap 'echo -e "${RED}[FATAL] Error on line $LINENO. Exiting.${NC}" >&2' ERR
 # ==========================================
 #  TechyChi Universal Auto-Installer
 #  Premium Edition - 2026 (Verified Stable)
@@ -20,7 +22,7 @@ function print_title() {
     local text="$1"
     local width=54
     local padding=$(( (width - ${#text}) / 2 ))
-    printf "${CYAN}│${YELLOW}%*s%s%*s${CYAN}│${NC}\n" $padding "" "$text" $padding ""
+    printf "${CYAN}│${YELLOW}%*s%s%*s${CYAN}│${NC}\n" "$padding" "" "$text" "$padding" ""
     echo -e "${CYAN}└──────────────────────────────────────────────────────┘${NC}"
     sleep 1
 }
@@ -59,14 +61,14 @@ mkdir -p /etc/openvpn
 
 print_info "Installing Essentials..."
 # Stop Apache if present (Fix for Nginx OFF issue)
-systemctl stop apache2 > /dev/null 2>&1
-systemctl disable apache2 > /dev/null 2>&1
+systemctl stop apache2 > /dev/null 2>&1 || true
+systemctl disable apache2 > /dev/null 2>&1 || true
 
 apt update -y && apt upgrade -y
 apt install -y wget curl jq socat cron zip unzip net-tools git build-essential python3 python3-pip vnstat dropbear nginx dnsutils dante-server stunnel4 cmake
 
 # Install Rclone directly from official source to ensure Google Drive API compatibility
-curl https://rclone.org/install.sh | sudo bash > /dev/null 2>&1
+curl https://rclone.org/install.sh | sudo bash > /dev/null 2>&1 || true
 
 # --- OS DETECTOR & UBUNTU 24.04 COMPATIBILITY PATCH ---
 source /etc/os-release
@@ -74,19 +76,19 @@ if [[ "$VERSION_ID" == "24.04" ]]; then
     print_info "Ubuntu 24.04 Detected: Applying Core Network & SSH Patches..."
     
     # 1. Fix the IPtables Routing Death (Forces legacy translation)
-    apt-get install -y iptables iptables-nft > /dev/null 2>&1
+    apt-get install -y iptables iptables-nft > /dev/null 2>&1 || true
     
     # 2. Fix the SSH Socket Lockout (Reverts to standard ssh.service)
-    systemctl disable --now ssh.socket > /dev/null 2>&1
-    systemctl enable --now ssh.service > /dev/null 2>&1
-    systemctl restart ssh > /dev/null 2>&1
+    systemctl disable --now ssh.socket > /dev/null 2>&1 || true
+    systemctl enable --now ssh.service > /dev/null 2>&1 || true
+    systemctl restart ssh > /dev/null 2>&1 || true
 fi
 # ------------------------------------------------------
 
 # 3. DOMAIN & NS SETUP
 # -----------------------------------------------------
 print_title "DOMAIN CONFIGURATION"
-MYIP=$(curl -sS -4 ifconfig.me)
+MYIP=$(curl -sS -4 ifconfig.me 2>/dev/null || curl -sS -4 ip.sb 2>/dev/null || echo "")
 
 # --- A. Main Domain ---
 while true; do
@@ -182,10 +184,10 @@ mkdir -p /etc/ssh/sshd_config.d
 echo "Banner /etc/issue.net" > /etc/ssh/sshd_config.d/99-custom-banner.conf
 
 # Silence any legacy banner settings in the main file to prevent fatal crashes
-sed -i 's/^Banner/#Banner/g' /etc/ssh/sshd_config 2>/dev/null
+    sed -i 's/^Banner/#Banner/g' /etc/ssh/sshd_config 2>/dev/null || true
 
-systemctl restart ssh
-systemctl restart sshd 2>/dev/null
+systemctl restart ssh || true
+systemctl restart sshd 2>/dev/null || true
 
 # Force Dropbear Banner and Aggressive Keep-Alive/Timeout
 sed -i 's/^DROPBEAR_EXTRA_ARGS=.*/DROPBEAR_EXTRA_ARGS="-b \/etc\/issue.net -K 35 -I 60"/g' /etc/default/dropbear
@@ -198,7 +200,7 @@ echo "ClientAliveInterval 30" >> /etc/ssh/sshd_config.d/99-keepalive.conf
 echo "ClientAliveCountMax 2" >> /etc/ssh/sshd_config.d/99-keepalive.conf
 
 print_success "Dropbear & SSH Configured with Anti-Ghost Settings!"
-systemctl restart dropbear
+systemctl restart dropbear || true
 
 # 5. INSTALL XRAY CORE
 # -----------------------------------------------------
@@ -210,15 +212,15 @@ bash -c "$(curl -L https://github.com/XTLS/Xray-install/raw/main/install-release
 # -----------------------------------------------------
 print_title "GENERATING SSL CERTIFICATE"
 
-systemctl stop nginx
+systemctl stop nginx || true
 mkdir -p /root/.acme.sh
 
-# 1. The official ACME script URL
-curl -s https://get.acme.sh | sh -s email=admin@$domain
-/root/.acme.sh/acme.sh --upgrade --auto-upgrade
-/root/.acme.sh/acme.sh --set-default-ca --server letsencrypt
-/root/.acme.sh/acme.sh --issue -d "$domain" --standalone -k ec-256 --force
-/root/.acme.sh/acme.sh --installcert -d "$domain" --fullchainpath /etc/xray/xray.crt --keypath /etc/xray/xray.key --ecc
+# 1. The official ACME script URL (fallback to self-signed cert on failure)
+curl -s https://get.acme.sh | sh -s email=admin@$domain || true
+/root/.acme.sh/acme.sh --upgrade --auto-upgrade || true
+/root/.acme.sh/acme.sh --set-default-ca --server letsencrypt || true
+/root/.acme.sh/acme.sh --issue -d "$domain" --standalone -k ec-256 --force || true
+/root/.acme.sh/acme.sh --installcert -d "$domain" --fullchainpath /etc/xray/xray.crt --keypath /etc/xray/xray.key --ecc || true
 
 # 2. THE BULLETPROOF FAILSAFE
 if [[ ! -s /etc/xray/xray.crt || ! -s /etc/xray/xray.key ]]; then
@@ -258,8 +260,8 @@ connect = 127.0.0.1:109
 EOF
 
 sed -i 's/ENABLED=0/ENABLED=1/g' /etc/default/stunnel4
-systemctl enable stunnel4
-systemctl restart stunnel4
+systemctl enable stunnel4 || true
+systemctl restart stunnel4 || true
 print_success "Stunnel4 Configured (Ports 447, 777)"
 
 # -----------------------------------------------------
@@ -268,9 +270,9 @@ print_success "Stunnel4 Configured (Ports 447, 777)"
 print_title "INSTALLING UDPGW"
 git clone https://github.com/ambrop72/badvpn.git /tmp/badvpn > /dev/null 2>&1
 mkdir -p /tmp/badvpn/badvpn-build
-cd /tmp/badvpn/badvpn-build
-cmake /tmp/badvpn -DBUILD_NOTHING_BY_DEFAULT=1 -DBUILD_UDPGW=1 > /dev/null 2>&1
-make install > /dev/null 2>&1
+cd /tmp/badvpn/badvpn-build || { echo "Failed to enter build dir"; exit 1; }
+cmake /tmp/badvpn -DBUILD_NOTHING_BY_DEFAULT=1 -DBUILD_UDPGW=1 > /dev/null 2>&1 || { echo "CMake failed"; exit 1; }
+make install > /dev/null 2>&1 || { echo "Make install failed"; exit 1; }
 cat > /etc/systemd/system/udpgw.service <<EOF
 [Unit]
 Description=BadVPN UDPGW
@@ -284,8 +286,8 @@ Restart=always
 WantedBy=multi-user.target
 EOF
 systemctl daemon-reload
-systemctl enable udpgw
-systemctl start udpgw
+systemctl enable udpgw || true
+systemctl start udpgw || true
 rm -rf /tmp/badvpn
 print_success "UDPGW Core Installed!"
 
@@ -294,9 +296,9 @@ print_success "UDPGW Core Installed!"
 # -----------------------------------------------------
 print_title "CONFIGURING NGINX PROXY"
 
-fuser -k 80/tcp > /dev/null 2>&1
-fuser -k 81/tcp > /dev/null 2>&1
-fuser -k 443/tcp > /dev/null 2>&1
+fuser -k 80/tcp > /dev/null 2>&1 || true
+fuser -k 81/tcp > /dev/null 2>&1 || true
+fuser -k 443/tcp > /dev/null 2>&1 || true
 
 rm -f /etc/nginx/sites-enabled/default
 rm -f /etc/nginx/sites-available/default
@@ -372,8 +374,8 @@ mkdir -p /etc/slowdns
 
 # 1. Download Pre-compiled Binary from GitHub
 print_info "Downloading SlowDNS Core..."
-wget -q -O /etc/slowdns/dnstt-server "${REPO_URL}/core/dnstt-server"
-chmod +x /etc/slowdns/dnstt-server
+wget -q -O /etc/slowdns/dnstt-server "${REPO_URL}/core/dnstt-server" || true
+chmod +x /etc/slowdns/dnstt-server 2>/dev/null || true
 
 # 2. Inject Static Master Keys
 print_info "Applying Static Master Keys..."
@@ -405,15 +407,15 @@ EOF
 
 # 5. Start the Service with explicit dependency checks
 systemctl daemon-reload
-systemctl enable client-slow
+systemctl enable client-slow || true
 
 # Force apply the IPTables rule before starting
 iptables -t nat -I PREROUTING -p udp --dport 53 -j REDIRECT --to-ports 5300 || true
 
-systemctl restart client-slow
+systemctl restart client-slow || true
 
 # Cleanup
-cd ~
+cd /root 2>/dev/null || true
 rm -rf /tmp/dnstt
 print_success "SlowDNS Configured (Static Mode)!"
 # -----------------------------------------------------
@@ -421,9 +423,9 @@ print_success "SlowDNS Configured (Static Mode)!"
 # 7.7 INSTALL OPENVPN
 # -----------------------------------------------------
 print_title "INSTALLING OPENVPN"
-wget -q -O /tmp/openvpn.sh "${REPO_URL}/core/openvpn.sh"
-chmod +x /tmp/openvpn.sh
-/tmp/openvpn.sh
+wget -q -O /tmp/openvpn.sh "${REPO_URL}/core/openvpn.sh" || true
+chmod +x /tmp/openvpn.sh 2>/dev/null || true
+/tmp/openvpn.sh 2>/dev/null || print_info "OpenVPN script skipped"
 rm -f /tmp/openvpn.sh
 
 # 8. DOWNLOAD FILES
@@ -476,8 +478,8 @@ WantedBy=multi-user.target
 EOF
 
 systemctl daemon-reload
-systemctl enable ws-proxy
-systemctl restart ws-proxy
+systemctl enable ws-proxy || true
+systemctl restart ws-proxy || true
 print_success "SSH-WS Proxy Service Configured & Healing Armed!"
 # -----------------------------------------------------
 
@@ -504,8 +506,8 @@ WantedBy=multi-user.target
 EOF
 
 systemctl daemon-reload
-systemctl enable ws-8880
-systemctl restart ws-8880
+systemctl enable ws-8880 || true
+systemctl restart ws-8880 || true
 print_success "Custom Proxy Service Configured!"
 
 download_bin "menu" "menu"
@@ -522,8 +524,8 @@ for file in "${files_ssh[@]}"; do
     download_bin "ssh" "$file"
 done
 # Rename backup/restore to match menu paths
-mv /usr/bin/backup /usr/bin/backup.sh 2>/dev/null
-mv /usr/bin/restore /usr/bin/restore.sh 2>/dev/null
+mv /usr/bin/backup /usr/bin/backup.sh 2>/dev/null || true
+mv /usr/bin/restore /usr/bin/restore.sh 2>/dev/null || true
 
 files_xray=(add-ws del-ws renew-ws cek-ws trial-ws member-ws add-vless del-vless renew-vless cek-vless trial-vless member-vless add-tr del-tr renew-tr cek-tr trial-tr member-tr)
 for file in "${files_xray[@]}"; do
@@ -552,8 +554,8 @@ socks pass {
     log: error
 }
 EOF
-systemctl enable danted
-systemctl restart danted
+systemctl enable danted || true
+systemctl restart danted || true
 print_success "SOCKS5 Configured!"
 
 # -----------------------------------------------------
@@ -568,8 +570,8 @@ echo iptables-persistent iptables-persistent/autosave_v4 boolean true | debconf-
 echo iptables-persistent iptables-persistent/autosave_v6 boolean true | debconf-set-selections
 
 # Install packages once, quietly, without prompts
-apt-get update -y > /dev/null 2>&1
-apt-get install -y ufw iptables-persistent netfilter-persistent > /dev/null 2>&1
+apt-get update -y > /dev/null 2>&1 || true
+apt-get install -y ufw iptables-persistent netfilter-persistent > /dev/null 2>&1 || true
 
 # Reset UFW only if you want a clean firewall state
 ufw --force reset > /dev/null 2>&1
@@ -634,7 +636,7 @@ iptables -C OUTPUT -p udp --dport 445 -j DROP 2>/dev/null || \
 iptables -A OUTPUT -p udp --dport 445 -j DROP
 
 # Save rules
-netfilter-persistent save > /dev/null 2>&1
+netfilter-persistent save > /dev/null 2>&1 || true
 
 print_success "Cloud-Safe Protocols (Anti-Spam & Anti-Torrent) Armed!"
 
@@ -645,20 +647,18 @@ print_info "Installing DDoS-Deflate Engine..."
 export DEBIAN_FRONTEND=noninteractive
 export NEEDRESTART_MODE=a
 
-wget -qO ddos.zip "https://github.com/jgmdev/ddos-deflate/archive/master.zip"
-unzip -q ddos.zip
-cd ddos-deflate-master
+if wget -qO ddos.zip "https://github.com/jgmdev/ddos-deflate/archive/master.zip" && unzip -q ddos.zip && cd ddos-deflate-master; then
+    # Auto-answer yes to any hidden prompts
+    yes "" | ./install.sh > /dev/null 2>&1 || true
+fi
 
-# Auto-answer yes to any hidden prompts
-yes "" | ./install.sh > /dev/null 2>&1
-
-cd ..
-rm -rf ddos.zip ddos-deflate-master
+cd /root 2>/dev/null || true
+rm -rf ddos.zip ddos-deflate-master 2>/dev/null || true
 
 # Configure DDoS-Deflate for VPN Traffic
-sed -i 's/NO_OF_CONNECTIONS=150/NO_OF_CONNECTIONS=200/g' /etc/ddos/ddos.conf
-sed -i 's/BAN_PERIOD=600/BAN_PERIOD=1800/g' /etc/ddos/ddos.conf
-systemctl restart ddos
+sed -i 's/NO_OF_CONNECTIONS=150/NO_OF_CONNECTIONS=200/g' /etc/ddos/ddos.conf || true
+sed -i 's/BAN_PERIOD=600/BAN_PERIOD=1800/g' /etc/ddos/ddos.conf || true
+systemctl restart ddos || true
 print_success "Aggressive Anti-DDoS Bouncer Armed!"
 # ------------------------------------------
 
@@ -681,8 +681,8 @@ EOF
 # ------------------------------------------------------
 
 # Configure Vnstat
-systemctl enable vnstat
-systemctl restart vnstat
+systemctl enable vnstat || true
+systemctl restart vnstat || true
 
 # --- UNCAP NGINX WORKER LIMITS ---
 sed -i 's/worker_processes.*/worker_processes auto;/g' /etc/nginx/nginx.conf
@@ -694,16 +694,16 @@ systemctl enable xray
 systemctl restart xray
 systemctl enable nginx
 systemctl restart nginx
-systemctl enable dropbear
-systemctl restart dropbear
+systemctl enable dropbear || true
+systemctl restart dropbear || true
 
 # Tag Local Version
-curl -s -m 5 "${REPO_URL}/core/version.txt" > /etc/xray/version
+curl -s -m 5 "${REPO_URL}/core/version.txt" > /etc/xray/version || true
 
 # Cronjobs
 echo "0 14 * * * root /usr/bin/xp" > /etc/cron.d/xp
 echo "*/5 * * * * root /usr/bin/tendang" > /etc/cron.d/tendang
-service cron restart
+service cron restart || true
 print_success "Services Started."
 
 # 10. FINISH & REBOOT (10s)
@@ -723,11 +723,11 @@ echo -e "${CYAN}─────────────────────�
 print_info "Erasing installation blueprints..."
 rm -f /root/setup.sh
 rm -f /tmp/setup.sh
-history -c
+history -c || true
 
 for i in {10..1}; do
     echo -e " Rebooting in $i..."
     sleep 1
 done
 
-reboot 
+reboot || true
