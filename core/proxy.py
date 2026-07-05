@@ -23,6 +23,9 @@ def handle_client(client_socket):
             elif "/vless" in request_clean:
                 server_socket.connect(('127.0.0.1', 10001))
                 server_socket.send(request.encode('utf-8'))
+            elif "/8444/sky1net" in request_clean:
+                server_socket.connect(('127.0.0.1', 10006))
+                server_socket.send(request.encode('utf-8'))
             elif "/trojan-ws" in request_clean:
                 server_socket.connect(('127.0.0.1', 10003))
                 server_socket.send(request.encode('utf-8'))
