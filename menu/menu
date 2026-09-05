@@ -71,9 +71,10 @@ status_check() {
 # --- BANDWIDTH MONITOR ---
 IFACE=$(ip route get 1.1.1.1 | awk '{print $5; exit}')
 CURRENT_MONTH=$(date +%Y-%m)
-RX_TODAY=$(vnstat -i $IFACE | grep "today" | awk '{print $2" "$3}' || echo "0 B")
-RX_YEST=$(vnstat -i $IFACE | grep "yesterday" | awk '{print $2" "$3}' || echo "0 B")
-RX_MONTH=$(vnstat -i $IFACE -m | grep "$CURRENT_MONTH" | awk '{print $8" "$9}' || echo "0 B")
+# Use total (rx+tx) column for accurate daily/monthly usage
+RX_TODAY=$(vnstat -i $IFACE | grep "today" | awk -F'|' '{print $3}' | xargs || echo "0 B")
+RX_YEST=$(vnstat -i $IFACE | grep "yesterday" | awk -F'|' '{print $3}' | xargs || echo "0 B")
+RX_MONTH=$(vnstat -i $IFACE -m | grep "$CURRENT_MONTH" | awk -F'|' '{print $3}' | xargs || echo "0 B")
 
 # --- LICENSE CALCULATION ---
 CLIENT=$(cat /etc/xray/client_name 2>/dev/null || echo "Unknown")
