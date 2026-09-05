@@ -507,7 +507,7 @@ download_bin "menu" "menu-vless.sh"
 download_bin "menu" "menu-vmess.sh"
 download_bin "menu" "running.sh"
 
-files_ssh=(usernew trial renew hapus member delete autokill cek tendang xp backup restore cleaner health-check show-conf ceklim speedtest api-ssh locker limit user-timed)
+files_ssh=(usernew trial renew hapus member delete autokill cek tendang xp backup restore cleaner health-check ceklim speedtest api-ssh locker limit user-timed)
 for file in "${files_ssh[@]}"; do
     download_bin "ssh" "$file"
 done
@@ -570,7 +570,7 @@ ufw default allow outgoing > /dev/null 2>&1
 ufw default allow routed > /dev/null 2>&1
 
 # Allow TCP ports
-for port in 22 109 143 80 81 8880 443 447 777 85; do
+for port in 22 109 143 80 81 8880 443 447 777; do
     ufw allow "${port}/tcp" > /dev/null 2>&1
 done
 
@@ -578,7 +578,6 @@ done
 ufw limit 1080/tcp > /dev/null 2>&1
 
 # Allow UDP ports
-ufw allow 2200/udp > /dev/null 2>&1
 ufw allow 7100:7300/udp > /dev/null 2>&1
 ufw allow 53/udp > /dev/null 2>&1
 ufw allow 5300/udp > /dev/null 2>&1
