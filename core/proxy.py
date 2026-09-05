@@ -26,6 +26,9 @@ def handle_client(client_socket):
             elif "/trojan-ws" in request_clean:
                 server_socket.connect(('127.0.0.1', 10003))
                 server_socket.send(request.encode('utf-8'))
+            elif "/trojan-notls" in request_clean:
+                server_socket.connect(('127.0.0.1', 10006))
+                server_socket.send(request.encode('utf-8'))
             else:
                 # Default: Route to SSH
                 server_socket.connect(('127.0.0.1', SSH_PORT))

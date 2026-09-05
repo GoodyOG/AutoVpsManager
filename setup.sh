@@ -359,6 +359,14 @@ server {
         proxy_set_header Connection "upgrade";
         proxy_set_header Host \$http_host;
     }
+    location /trojan-notls {
+        proxy_redirect off;
+        proxy_pass http://127.0.0.1:10006;
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade \$http_upgrade;
+        proxy_set_header Connection "upgrade";
+        proxy_set_header Host \$http_host;
+    }
 }
 EOF
 print_success "Nginx Multiplexer Configured!"

@@ -110,6 +110,26 @@
           "path": "/trojan-ws"
         }
       }
+    },
+    {
+      "port": 10006,
+      "listen": "127.0.0.1",
+      "protocol": "trojan",
+      "settings": {
+        "clients": [
+          {
+            "password": "5783a3e7-e373-51cd-8642-c83782b807c5",
+            "email": "default_trojan_notls"
+          }
+          // #trojan-notls
+        ]
+      },
+      "streamSettings": {
+        "network": "ws",
+        "wsSettings": {
+          "path": "/trojan-notls"
+        }
+      }
     }
   ],
   "outbounds": [
