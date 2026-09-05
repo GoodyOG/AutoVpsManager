@@ -55,7 +55,6 @@ mkdir -p /etc/xray/limit/vmess
 mkdir -p /etc/xray/limit/vless
 mkdir -p /etc/xray/limit/trojan
 mkdir -p /usr/local/etc/xray
-mkdir -p /etc/openvpn
 
 print_info "Installing Essentials..."
 # Stop Apache if present (Fix for Nginx OFF issue)
@@ -418,14 +417,6 @@ rm -rf /tmp/dnstt
 print_success "SlowDNS Configured (Static Mode)!"
 # -----------------------------------------------------
 
-# 7.7 INSTALL OPENVPN
-# -----------------------------------------------------
-print_title "INSTALLING OPENVPN"
-wget -q -O /tmp/openvpn.sh "${REPO_URL}/core/openvpn.sh"
-chmod +x /tmp/openvpn.sh
-/tmp/openvpn.sh
-rm -f /tmp/openvpn.sh
-
 # 8. DOWNLOAD FILES
 # -----------------------------------------------------
 print_title "DOWNLOADING SCRIPTS"
@@ -440,7 +431,6 @@ download_bin() {
 
 wget -q -O /usr/local/etc/xray/config.json "${REPO_URL}/core/config.json.template"
 wget -q -O /etc/systemd/system/xray.service "${REPO_URL}/core/xray.service"
-wget -q -O /etc/xray/ohp.py "${REPO_URL}/core/ohp.py"
 wget -q -O /etc/xray/proxy.py "${REPO_URL}/core/proxy.py"
 wget -q -O /etc/xray/proxy-8880.py "${REPO_URL}/core/proxy-8880.py"
 
@@ -580,7 +570,7 @@ ufw default allow outgoing > /dev/null 2>&1
 ufw default allow routed > /dev/null 2>&1
 
 # Allow TCP ports
-for port in 22 109 143 80 81 8880 443 447 777 85 1194 2095; do
+for port in 22 109 143 80 81 8880 443 447 777 85; do
     ufw allow "${port}/tcp" > /dev/null 2>&1
 done
 
