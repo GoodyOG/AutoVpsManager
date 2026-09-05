@@ -739,6 +739,36 @@ print_success "vnStat configured on ${VNSTAT_IFACE}!"
 sed -i 's/worker_processes.*/worker_processes auto;/g' /etc/nginx/nginx.conf
 sed -i 's/worker_connections.*/worker_connections 65535;/g' /etc/nginx/nginx.conf
 
+# --- BBR NETWORK OPTIMIZATION (persistent, no menu option needed) ---
+print_info "Enabling BBR congestion control..."
+if modinfo tcp_bbr > /dev/null 2>&1; then
+    modprobe tcp_bbr 2>/dev/null || true
+    echo "tcp_bbr" > /etc/modules-load.d/bbr.conf
+
+    cat > /etc/sysctl.d/99-bbr-aovps.conf <<EOF
+# BBR congestion control - applied by AutoVpsManager
+net.core.default_qdisc = fq
+net.ipv4.tcp_congestion_control = bbr
+net.ipv4.tcp_fastopen = 3
+EOF
+
+    sysctl --system > /dev/null 2>&1
+
+    IFACE_TC=$(ip route get 1.1.1.1 2>/dev/null | awk '{print $5; exit}')
+    if [[ -n "$IFACE_TC" ]]; then
+        tc qdisc replace dev "$IFACE_TC" root fq 2>/dev/null || true
+    fi
+
+    CURRENT_CC=$(sysctl -n net.ipv4.tcp_congestion_control 2>/dev/null)
+    if [[ "$CURRENT_CC" == "bbr" ]]; then
+        print_success "BBR is active (congestion_control: $CURRENT_CC)!"
+    else
+        print_info "BBR module loaded, but active CC is $CURRENT_CC (reboot may finish activation)"
+    fi
+else
+    print_info "BBR module not available on this kernel, skipping."
+fi
+
 # Enable Services
 systemctl daemon-reload
 systemctl enable xray
