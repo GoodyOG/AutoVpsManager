@@ -68,13 +68,48 @@ status_check() {
     fi
 }
 
-# --- BANDWIDTH MONITOR ---
+# --- BANDWIDTH MONITOR (direct /proc/net/dev, no vnstat dependency) ---
 IFACE=$(ip route get 1.1.1.1 | awk '{print $5; exit}')
+BW_FILE="/var/log/xray/bandwidth_daily.log"
+
+# Current counters from kernel (bytes)
+RX_NOW=$(cat /proc/net/dev | grep "^ *${IFACE}:" | awk '{print $2}')
+TX_NOW=$(cat /proc/net/dev | grep "^ *${IFACE}:" | awk '{print $10}')
+TODAY=$(date +%Y-%m-%d)
+YESTERDAY=$(date -d "yesterday" +%Y-%m-%d)
 CURRENT_MONTH=$(date +%Y-%m)
-# Use total (rx+tx) column for accurate daily/monthly usage
-RX_TODAY=$(vnstat -i $IFACE | grep "today" | awk -F'|' '{print $3}' | xargs || echo "0 B")
-RX_YEST=$(vnstat -i $IFACE | grep "yesterday" | awk -F'|' '{print $3}' | xargs || echo "0 B")
-RX_MONTH=$(vnstat -i $IFACE -m | grep "$CURRENT_MONTH" | awk -F'|' '{print $3}' | xargs || echo "0 B")
+
+# Load saved baseline for today, or initialize from current counters
+mkdir -p /var/log/xray
+if [[ -f "$BW_FILE" ]]; then
+    SAVED_DATE=$(head -n1 "$BW_FILE" 2>/dev/null | awk '{print $1}')
+    SAVED_RX=$(head -n1 "$BW_FILE" 2>/dev/null | awk '{print $2}')
+    SAVED_TX=$(head -n1 "$BW_FILE" 2>/dev/null | awk '{print $3}')
+else
+    SAVED_DATE=""
+    SAVED_RX=""
+    SAVED_TX=""
+fi
+
+if [[ "$SAVED_DATE" != "$TODAY" ]] || [[ -z "$SAVED_RX" ]]; then
+    # New day or first run: reset baseline
+    echo "$TODAY $RX_NOW $TX_NOW" > "$BW_FILE"
+    SAVED_RX=$RX_NOW
+    SAVED_TX=$TX_NOW
+fi
+
+# Calculate today's usage
+RX_TODAY_BYTES=$((RX_NOW - SAVED_RX))
+TX_TODAY_BYTES=$((TX_NOW - SAVED_TX))
+TODAY_BYTES=$((RX_TODAY_BYTES + TX_TODAY_BYTES))
+RX_TODAY=$(numfmt --to=iec $TODAY_BYTES 2>/dev/null || echo "$TODAY_BYTES B")
+
+# Yesterday not tracked yet in this simple version
+RX_YEST=""
+
+# Monthly estimate: use today's total + current month day
+DAY_OF_MONTH=$(date +%d | sed 's/^0//')
+RX_MONTH=$(numfmt --to=iec $((TODAY_BYTES * 30 / DAY_OF_MONTH)) 2>/dev/null || echo "0 B")
 
 # --- LICENSE CALCULATION ---
 CLIENT=$(cat /etc/xray/client_name 2>/dev/null || echo "Unknown")
