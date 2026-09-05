@@ -442,8 +442,6 @@ wget -q -O /etc/systemd/system/xray.service "${REPO_URL}/core/xray.service"
 wget -q -O /etc/xray/proxy.py "${REPO_URL}/core/proxy.py"
 wget -q -O /etc/xray/proxy-8880.py "${REPO_URL}/core/proxy-8880.py"
 
-download_bin "core" "auth.sh"
-
 # -----------------------------------------------------
 # VAULTED CONFIG: GOOGLE DRIVE AUTHENTICATION
 # -----------------------------------------------------
@@ -749,9 +747,6 @@ systemctl enable nginx
 systemctl restart nginx
 systemctl enable dropbear
 systemctl restart dropbear
-
-# Tag Local Version
-curl -s -m 5 "${REPO_URL}/core/version.txt" > /etc/xray/version
 
 # Cronjobs
 echo "0 14 * * * root /usr/bin/xp" > /etc/cron.d/xp
