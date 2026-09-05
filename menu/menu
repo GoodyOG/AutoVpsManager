@@ -26,7 +26,8 @@ UPTIME=$(uptime -p | cut -d " " -f 2-10)
 DATE=$(date +"%d-%m-%Y | %H:%M:%S")
 
 # --- CPU & RAM ---
-cpu_idle=$(top -bn1 | grep "Cpu(s)" | sed 's/,/./g' | grep -Po "[0-9.]+(?=\s*id)" | head -n 1)
+# CPU: use 2 samples with 0.5s delay for accurate delta (avoids bogus 99% on snapshot)
+cpu_idle=$(top -bn2 -d 0.5 | grep "Cpu(s)" | tail -1 | sed 's/,/./g' | grep -Po "[0-9.]+(?=\s*id)" | head -n 1)
 cpu_usage=$(awk "BEGIN {printf \"%.1f%%\", 100 - ${cpu_idle:-0}}")
 
 RAM_TOTAL=$(free -m | grep Mem | awk '{print $2}')
