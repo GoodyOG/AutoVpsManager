@@ -68,48 +68,64 @@ status_check() {
     fi
 }
 
-# --- BANDWIDTH MONITOR (direct /proc/net/dev, no vnstat dependency) ---
+# --- BANDWIDTH MONITOR (vnStat JSON) ---
 IFACE=$(ip route get 1.1.1.1 | awk '{print $5; exit}')
-BW_FILE="/var/log/xray/bandwidth_daily.log"
+VNSTAT_VALUES=$(vnstat --json -i "$IFACE" 2>/dev/null | python3 -c '
+import datetime
+import json
+import sys
 
-# Current counters from kernel (bytes)
-RX_NOW=$(cat /proc/net/dev | grep "^ *${IFACE}:" | awk '{print $2}')
-TX_NOW=$(cat /proc/net/dev | grep "^ *${IFACE}:" | awk '{print $10}')
-TODAY=$(date +%Y-%m-%d)
-YESTERDAY=$(date -d "yesterday" +%Y-%m-%d)
-CURRENT_MONTH=$(date +%Y-%m)
+try:
+    interface = json.load(sys.stdin)["interfaces"][0]
+    traffic = interface.get("traffic", {})
+    today = datetime.date.today()
+    yesterday = today - datetime.timedelta(days=1)
 
-# Load saved baseline for today, or initialize from current counters
-mkdir -p /var/log/xray
-if [[ -f "$BW_FILE" ]]; then
-    SAVED_DATE=$(head -n1 "$BW_FILE" 2>/dev/null | awk '{print $1}')
-    SAVED_RX=$(head -n1 "$BW_FILE" 2>/dev/null | awk '{print $2}')
-    SAVED_TX=$(head -n1 "$BW_FILE" 2>/dev/null | awk '{print $3}')
-else
-    SAVED_DATE=""
-    SAVED_RX=""
-    SAVED_TX=""
-fi
+    def entry_date(entry):
+        value = entry.get("date", {})
+        if {"year", "month", "day"}.issubset(value):
+            return datetime.date(value["year"], value["month"], value["day"])
+        timestamp = entry.get("timestamp")
+        if timestamp is not None:
+            return datetime.datetime.fromtimestamp(timestamp).date()
+        return None
 
-if [[ "$SAVED_DATE" != "$TODAY" ]] || [[ -z "$SAVED_RX" ]]; then
-    # New day or first run: reset baseline
-    echo "$TODAY $RX_NOW $TX_NOW" > "$BW_FILE"
-    SAVED_RX=$RX_NOW
-    SAVED_TX=$TX_NOW
-fi
+    def total(entry):
+        return int(entry.get("rx", 0)) + int(entry.get("tx", 0))
 
-# Calculate today's usage
-RX_TODAY_BYTES=$((RX_NOW - SAVED_RX))
-TX_TODAY_BYTES=$((TX_NOW - SAVED_TX))
-TODAY_BYTES=$((RX_TODAY_BYTES + TX_TODAY_BYTES))
-RX_TODAY=$(numfmt --to=iec $TODAY_BYTES 2>/dev/null || echo "$TODAY_BYTES B")
+    def format_bytes(value):
+        value = float(value)
+        units = ("B", "KiB", "MiB", "GiB", "TiB")
+        unit = units[0]
+        for unit in units:
+            if value < 1024 or unit == units[-1]:
+                break
+            value /= 1024
+        return f"{int(value)} B" if unit == "B" else f"{value:.2f} {unit}"
 
-# Yesterday not tracked yet in this simple version
-RX_YEST=""
+    today_total = 0
+    yesterday_total = 0
+    for entry in traffic.get("day", []):
+        when = entry_date(entry)
+        if when == today:
+            today_total = total(entry)
+        elif when == yesterday:
+            yesterday_total = total(entry)
 
-# Monthly estimate: use today's total + current month day
-DAY_OF_MONTH=$(date +%d | sed 's/^0//')
-RX_MONTH=$(numfmt --to=iec $((TODAY_BYTES * 30 / DAY_OF_MONTH)) 2>/dev/null || echo "0 B")
+    month_total = 0
+    for entry in traffic.get("month", []):
+        value = entry.get("date", {})
+        if value.get("year") == today.year and value.get("month") == today.month:
+            month_total = total(entry)
+
+    yesterday_value = format_bytes(yesterday_total) if yesterday_total else ""
+    print(f"{format_bytes(today_total)}|{yesterday_value}|{format_bytes(month_total)}")
+except Exception:
+    print("0 B||0 B")
+')
+IFS='|' read -r RX_TODAY RX_YEST RX_MONTH <<< "$VNSTAT_VALUES"
+RX_TODAY=${RX_TODAY:-0 B}
+RX_MONTH=${RX_MONTH:-0 B}
 
 # --- LICENSE CALCULATION ---
 CLIENT=$(cat /etc/xray/client_name 2>/dev/null || echo "Unknown")

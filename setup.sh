@@ -677,9 +677,65 @@ LimitNOFILE=1000000
 EOF
 # ------------------------------------------------------
 
-# Configure Vnstat
+# Configure vnStat with a clean, package-managed service.
+print_info "Configuring vnStat bandwidth monitor..."
+VNSTAT_IFACE=$(ip route get 1.1.1.1 2>/dev/null | awk '{print $5; exit}')
+if [[ -z "$VNSTAT_IFACE" ]]; then
+    VNSTAT_IFACE=$(ip -o link show | awk -F': ' '$2 != "lo" {print $2; exit}')
+fi
+systemctl stop vnstat 2>/dev/null || true
+rm -f /etc/systemd/system/vnstatd.service
+cat > /etc/vnstat.conf <<EOF
+# AutoVpsManager vnStat configuration
+Interface "$VNSTAT_IFACE"
+DatabaseDir "/var/lib/vnstat"
+64bitInterfaceCounters 1
+BandwidthDetection 0
+MaxBandwidth 1000
+UpdateInterval 20
+PollInterval 5
+SaveInterval 1
+OfflineSaveInterval 5
+SaveOnStatusChange 1
+UseLogging 0
+EOF
+cat > /etc/systemd/system/vnstat.service <<'EOF'
+[Unit]
+Description=vnStat network traffic monitor
+Documentation=man:vnstatd(8) man:vnstat(1) man:vnstat.conf(5)
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=simple
+ExecStart=/usr/sbin/vnstatd -n
+Restart=on-failure
+RestartSec=2
+User=vnstat
+RuntimeDirectory=vnstat
+StateDirectory=vnstat
+ProtectSystem=strict
+ReadWritePaths=/var/lib/vnstat
+PrivateDevices=yes
+ProtectKernelTunables=yes
+ProtectControlGroups=yes
+ProtectHome=yes
+ProtectKernelModules=yes
+PrivateTmp=yes
+RestrictRealtime=yes
+RestrictNamespaces=yes
+
+[Install]
+WantedBy=multi-user.target
+Alias=vnstatd.service
+EOF
+mkdir -p /var/lib/vnstat
+chown -R vnstat:vnstat /var/lib/vnstat
+chmod 755 /var/lib/vnstat
+systemctl daemon-reload
 systemctl enable vnstat
 systemctl restart vnstat
+print_success "vnStat configured on ${VNSTAT_IFACE}!"
 
 # --- UNCAP NGINX WORKER LIMITS ---
 sed -i 's/worker_processes.*/worker_processes auto;/g' /etc/nginx/nginx.conf
