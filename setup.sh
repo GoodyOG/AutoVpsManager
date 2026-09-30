@@ -552,30 +552,6 @@ systemctl enable danted
 systemctl restart danted
 print_success "SOCKS5 Configured!"
 
-# --- INSTALL DDoS-DEFLATE (THE BOUNCER) ---
-print_info "Installing DDoS-Deflate Engine..."
-
-# Force Ubuntu 24.04 to skip the invisible pink prompt
-export DEBIAN_FRONTEND=noninteractive
-export NEEDRESTART_MODE=a
-
-wget -qO ddos.zip "https://github.com/jgmdev/ddos-deflate/archive/master.zip"
-unzip -q ddos.zip
-cd ddos-deflate-master
-
-# Auto-answer yes to any hidden prompts
-yes "" | ./install.sh > /dev/null 2>&1
-
-cd ..
-rm -rf ddos.zip ddos-deflate-master
-
-# Configure DDoS-Deflate for VPN Traffic
-sed -i 's/NO_OF_CONNECTIONS=150/NO_OF_CONNECTIONS=200/g' /etc/ddos/ddos.conf
-sed -i 's/BAN_PERIOD=600/BAN_PERIOD=1800/g' /etc/ddos/ddos.conf
-systemctl restart ddos
-print_success "Aggressive Anti-DDoS Bouncer Armed!"
-# ------------------------------------------
-
 # 9. FINAL CONFIGURATION
 # -----------------------------------------------------
 print_title "FINALIZING SERVICES"

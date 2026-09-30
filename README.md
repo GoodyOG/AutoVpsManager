@@ -69,7 +69,6 @@ apt update && apt install -y wget && wget -q https://raw.githubusercontent.com/G
 - SlowDNS key manager
 - Backup to Google Drive + Telegram
 - Restore from backup
-- DDoS Deflate protection
 
 ---
 
