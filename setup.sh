@@ -311,6 +311,12 @@ server {
     ssl_ciphers EECDH+CHACHA20:EECDH+CHACHA20-draft:EECDH+ECDSA+AES128:EECDH+aRSA+AES128:RSA+AES128:EECDH+ECDSA+AES256:EECDH+aRSA+AES256:RSA+AES256:EECDH+ECDSA+3DES:EECDH+aRSA+3DES:RSA+3DES:!MD5;
     ssl_protocols TLSv1.1 TLSv1.2 TLSv1.3;
 
+    # nginx defaults proxy_read_timeout to 60s, which silently tears down any
+    # upgraded WebSocket tunnel that goes idle for a minute (VLESS/VMess/Trojan
+    # WS). Clients see "connection lost" whenever they pause, then reconnect.
+    proxy_read_timeout 86400s;
+    proxy_send_timeout 86400s;
+
     location / {
         proxy_redirect off;
         proxy_pass http://127.0.0.1:80;
