@@ -666,8 +666,30 @@ fi
 
 # Enable Services
 systemctl daemon-reload
+
+# --- XRAY PERMISSION SELF-HEAL ---
+# The XTLS installer owns these paths as xray:xray (config dir 750 root:xray,
+# log dir 700 xray:xray) and runs the service as User=xray. If a stale unit or a
+# root-owned wget drops a 640/700 dir in the way, xray exits 23 with
+# "open /usr/local/etc/xray/config.json: permission denied" and crash-loops forever.
+print_info "Fixing Xray ownership/permissions (service runs as xray)..."
+mkdir -p /var/log/xray /usr/local/etc/xray
+chown -R xray:xray /var/log/xray 2>/dev/null || true
+chmod 700 /var/log/xray 2>/dev/null || true
+chown 0:xray /usr/local/etc/xray 2>/dev/null || true
+chmod 750 /usr/local/etc/xray 2>/dev/null || true
+chown 0:xray /usr/local/etc/xray/config.json 2>/dev/null || true
+chmod 640 /usr/local/etc/xray/config.json 2>/dev/null || true
+
 systemctl enable xray
 systemctl restart xray
+sleep 2
+if systemctl is-active --quiet xray; then
+    print_success "Xray is running (config readable by service user)."
+else
+    echo -e " ${RED}[!] Xray FAILED to start. Last log lines:${NC}"
+    journalctl -u xray -n 10 --no-pager 2>/dev/null
+fi
 systemctl enable nginx
 systemctl restart nginx
 systemctl enable dropbear
